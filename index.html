@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wiggly Eyes ◉</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #f5f0e8;
+    cursor: none;
+    font-family: sans-serif;
+  }
+
+  /* Subtle dot-grid texture */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: radial-gradient(circle, #c8bda4 1px, transparent 1px);
+    background-size: 30px 30px;
+    opacity: 0.35;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+  }
+
+  /* Custom cursor */
+  #cursor {
+    position: fixed;
+    width: 10px;
+    height: 10px;
+    background: #2a2220;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 1000;
+    mix-blend-mode: multiply;
+    transition: transform 0.08s ease;
+  }
+  #cursor.clicking { transform: translate(-50%, -50%) scale(1.6); }
+
+  /* Hint label */
+  #hint {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #a09080;
+    pointer-events: none;
+    z-index: 100;
+    opacity: 1;
+    transition: opacity 2s ease;
+  }
+  #hint.gone { opacity: 0; }
+
+  /* Botón camuflado como un ojo — mezcla con los demás */
+  #pdf-link {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 100;
+    width: 130px;
+    height: 130px;
+    border-radius: 50%;
+    background: #ede8dc;
+    border: 3px solid rgba(60,40,20,0.14);
+    box-shadow: 0 6px 24px rgba(80,60,40,0.15), inset 0 -4px 12px rgba(0,0,0,0.06);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    text-decoration: none;
+    cursor: none;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  #pdf-link:hover {
+    transform: translate(-50%, -51%) scale(1.06);
+    box-shadow: 0 12px 36px rgba(80,60,40,0.22), inset 0 -4px 12px rgba(0,0,0,0.08);
+  }
+  /* Iris interior del botón-ojo */
+  #pdf-link .btn-iris {
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    background: #1e2428;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+    transition: transform 0.2s ease;
+    position: relative;
+  }
+  #pdf-link:hover .btn-iris {
+    transform: scale(1.08);
+  }
+  /* Brillo del ojo-botón */
+  #pdf-link .btn-iris::after {
+    content: '';
+    position: absolute;
+    top: 8px; left: 10px;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.75);
+  }
+  #pdf-link .btn-label {
+    font-size: 9.5px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: #8a7a68;
+    font-family: sans-serif;
+    margin-top: 2px;
+    text-align: center;
+    line-height: 1.3;
+  }
+
+  /* Title */
+  #title {
+    position: fixed;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: #b0a090;
+    pointer-events: none;
+    z-index: 100;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+<div id="cursor"></div>
+<div id="title">wiggly eyes</div>
+<div id="hint">move your cursor · tap to surprise</div>
+
+<a id="pdf-link" href="https://drive.google.com/file/d/1cR8pEiJcjO4zZnWaEX-0CAPbm5NQDwgm/view?usp=sharing" target="_blank" rel="noopener">
+  <div class="btn-iris"></div>
+  <span class="btn-label">Ficha de<br>Autor</span>
+</a>
+
+<script>
+// ─── Canvas setup ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx    = canvas.getContext('2d');
+const cursor = document.getElementById('cursor');
+const hint   = document.getElementById('hint');
+
+let W = 0, H = 0;
+
+// ─── Mouse / touch state ─────────────────────────────────────────────────────
+const mouse = { x: -9999, y: -9999, active: false };
+let lastMoveTime = 0;
+let hintGone = false;
+
+function onMove(x, y) {
+  mouse.x = x; mouse.y = y; mouse.active = true;
+  lastMoveTime = performance.now();
+  cursor.style.left = x + 'px';
+  cursor.style.top  = y + 'px';
+  if (!hintGone) { hint.classList.add('gone'); hintGone = true; }
+}
+
+window.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
+window.addEventListener('touchmove', e => {
+  e.preventDefault();
+  onMove(e.touches[0].clientX, e.touches[0].clientY);
+}, { passive: false });
+
+window.addEventListener('mousedown', () => cursor.classList.add('clicking'));
+window.addEventListener('mouseup',   () => cursor.classList.remove('clicking'));
+
+// Click / tap: make all eyes blink at once (one-time panic blink)
+window.addEventListener('click',     triggerPanicBlink);
+window.addEventListener('touchstart', e => {
+  onMove(e.touches[0].clientX, e.touches[0].clientY);
+  triggerPanicBlink();
+});
+
+function triggerPanicBlink() {
+  eyes.forEach(e => {
+    if (!e.blinking) {
+      e.blinking = true;
+      e.blinkPhase = 0;
+    }
+  });
+}
+
+// ─── Math helpers ────────────────────────────────────────────────────────────
+const lerp  = (a, b, t) => a + (b - a) * t;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const rand  = (lo, hi) => lo + Math.random() * (hi - lo);
+
+// ─── Eye layout — normalized [0..1] positions ─────────────────────────────
+//  [nx,   ny,   sizeScale, style]
+//  style 0 = round, 1 = oval-wide, 2 = oval-tall
+// Eyes distribuidos — varios cerca del centro para camuflar el botón
+const LAYOUT = [
+  // Fila superior
+  [0.08, 0.08, 1.0,  0], [0.24, 0.06, 0.75, 1],
+  [0.50, 0.07, 1.1,  2], [0.76, 0.06, 0.80, 0],
+  [0.92, 0.09, 0.95, 1],
+  // Lados superiores
+  [0.04, 0.28, 0.80, 2], [0.18, 0.34, 0.70, 0],
+  [0.82, 0.30, 0.85, 1], [0.96, 0.38, 0.68, 0],
+  // Cerca del centro — camuflando el botón
+  [0.30, 0.44, 0.85, 0], [0.68, 0.42, 0.90, 1],
+  [0.34, 0.60, 0.75, 2], [0.66, 0.60, 0.80, 0],
+  [0.50, 0.36, 0.70, 1], [0.50, 0.66, 0.72, 2],
+  // Lado izquierdo
+  [0.06, 0.50, 0.85, 1], [0.16, 0.56, 0.70, 0],
+  // Lado derecho
+  [0.84, 0.50, 0.95, 2], [0.94, 0.58, 0.72, 1],
+  // Lados inferiores
+  [0.05, 0.74, 0.80, 0], [0.20, 0.68, 0.70, 2],
+  [0.80, 0.70, 0.85, 0], [0.95, 0.76, 0.70, 1],
+  // Fila inferior
+  [0.12, 0.90, 0.80, 1], [0.30, 0.93, 0.75, 0],
+  [0.50, 0.92, 1.05, 2], [0.70, 0.91, 0.78, 1],
+  [0.88, 0.88, 0.90, 0],
+];
+
+// Iris/pupil colour options (dark, soulful)
+const IRIS_COLORS = ['#1e2a1e','#1a1e2e','#2e1a1a','#1e2420','#221e2a'];
+
+let eyes = [];
+
+function buildEyes() {
+  eyes = LAYOUT.map(([nx, ny, scale, style]) => {
+    const baseR = lerp(26, 52, (scale - 0.6) / 0.7); // 26–52 px
+    return {
+      nx, ny, scale, style, baseR,
+      x: 0, y: 0, r: baseR,          // computed on resize
+      px: 0, py: 0,                   // pupil lerped position
+      // Idle
+      idleT: rand(0, Math.PI * 2),
+      idleSpeed: rand(0.5, 1.1),
+      idleAmpX: rand(1.5, 3.5),
+      idleAmpY: rand(1.2, 2.8),
+      // Blink
+      blinkT: 0,
+      blinkPhase: 0,   // 0=closing 1=opening
+      blinking: false,
+      blinkTimer: rand(2500, 6000),
+      // Squash/stretch
+      sqX: 1, sqY: 1,
+      // Rotation wobble
+      rot: rand(-0.18, 0.18),
+      // Appearance
+      tint: `hsl(${rand(25,50)},${rand(15,35)}%,${rand(91,97)}%)`,
+      irisColor: IRIS_COLORS[Math.floor(Math.random() * IRIS_COLORS.length)],
+      // Wobble on blink-open
+      wobble: 0, wobbleV: 0,
+    };
+  });
+}
+
+// ─── Resize ──────────────────────────────────────────────────────────────────
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  const diag = Math.hypot(W, H);
+  const sf = clamp(diag / 1300, 0.55, 1.5);
+
+  eyes.forEach(e => {
+    const prevX = e.x, prevY = e.y;
+    e.x = e.nx * W;
+    e.y = e.ny * H;
+    e.r = e.baseR * sf;
+    // Shift pupil by same offset so it doesn't snap
+    if (prevX !== 0) {
+      e.px += (e.x - prevX);
+      e.py += (e.y - prevY);
+    } else {
+      e.px = e.x;
+      e.py = e.y;
+    }
+  });
+}
+window.addEventListener('resize', resize);
+
+// ─── Draw a single eye ───────────────────────────────────────────────────────
+function drawEye(e) {
+  const { x, y, r, blinkT, sqX, sqY, rot, tint, irisColor, style, wobble } = e;
+
+  // Eye radii by style
+  const rx = r * sqX * (style === 1 ? 1.18 : style === 2 ? 0.88 : 1.0) * (1 + wobble * 0.04);
+  const ry = r * sqY * (style === 2 ? 1.18 : style === 1 ? 0.85 : 1.0) * (1 - wobble * 0.02);
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+
+  // ── Drop shadow ──
+  ctx.save();
+  ctx.shadowColor = 'rgba(80,60,40,0.18)';
+  ctx.shadowBlur  = r * 0.55;
+  ctx.shadowOffsetY = r * 0.18;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fillStyle = tint;
+  ctx.fill();
+  ctx.restore();
+
+  // ── Eyeball fill ──
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fillStyle = tint;
+  ctx.fill();
+
+  // ── Eyeball outline ──
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(60,40,20,0.16)';
+  ctx.lineWidth = r * 0.055;
+  ctx.stroke();
+
+  // ── Pupil & iris (clipped inside eyeball) ──
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx * 0.91, ry * 0.91, 0, 0, Math.PI * 2);
+  ctx.clip();
+
+  // Convert pupil world pos to local
+  const lpx = e.px - x;
+  const lpy = e.py - y;
+  const dist = Math.hypot(lpx, lpy);
+  const maxD = r * 0.40;
+  const angle = Math.atan2(lpy, lpx);
+  const cd  = Math.min(dist, maxD);
+  const pdx = Math.cos(angle) * cd;
+  const pdy = Math.sin(angle) * cd;
+
+  const irisR  = r * 0.50;
+  const pupilR = r * 0.33;
+
+  // Iris gradient
+  const ig = ctx.createRadialGradient(pdx - irisR*0.15, pdy - irisR*0.15, 0, pdx, pdy, irisR);
+  ig.addColorStop(0, irisColor + 'ee');
+  ig.addColorStop(0.6, irisColor + 'aa');
+  ig.addColorStop(1, irisColor + '33');
+  ctx.beginPath();
+  ctx.arc(pdx, pdy, irisR, 0, Math.PI * 2);
+  ctx.fillStyle = ig;
+  ctx.fill();
+
+  // Pupil
+  ctx.beginPath();
+  ctx.arc(pdx, pdy, pupilR, 0, Math.PI * 2);
+  ctx.fillStyle = '#0d0c0b';
+  ctx.fill();
+
+  // Main shine
+  ctx.beginPath();
+  ctx.arc(pdx - pupilR * 0.30, pdy - pupilR * 0.30, pupilR * 0.24, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.88)';
+  ctx.fill();
+
+  // Mini secondary shine
+  ctx.beginPath();
+  ctx.arc(pdx + pupilR * 0.20, pdy + pupilR * 0.25, pupilR * 0.10, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.fill();
+
+  ctx.restore(); // end clip
+
+  // ── Blink eyelid ──
+  if (blinkT > 0.001) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+    ctx.clip();
+
+    const lidY = -ry + ry * 2 * blinkT;
+    ctx.fillStyle = '#ede5d5';
+    ctx.fillRect(-rx - 2, -ry - 2, rx * 2 + 4, ry + lidY + 2);
+
+    // Eyelash crease
+    ctx.beginPath();
+    ctx.moveTo(-rx, lidY);
+    ctx.lineTo( rx, lidY);
+    ctx.strokeStyle = 'rgba(60,40,20,0.18)';
+    ctx.lineWidth = r * 0.055;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // ── Glass-like specular overlay ──
+  const sg = ctx.createRadialGradient(-rx*0.25, -ry*0.28, 0, 0, 0, rx);
+  sg.addColorStop(0, 'rgba(255,255,255,0.30)');
+  sg.addColorStop(0.45,'rgba(255,255,255,0.06)');
+  sg.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fillStyle = sg;
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// ─── Main loop ───────────────────────────────────────────────────────────────
+let prevT = 0;
+
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const dt = Math.min(ts - prevT, 50);
+  prevT = ts;
+
+  const idle = mouse.active && (ts - lastMoveTime) > 900;
+  const noMouse = !mouse.active;
+
+  ctx.clearRect(0, 0, W, H);
+
+  eyes.forEach(e => {
+    // ── Idle float ──
+    e.idleT += dt * 0.001 * e.idleSpeed;
+    e.x = e.nx * W + Math.sin(e.idleT * 1.3) * e.idleAmpX;
+    e.y = e.ny * H + Math.cos(e.idleT * 0.9) * e.idleAmpY;
+
+    // ── Pupil target ──
+    let tx, ty;
+    if (!idle && !noMouse) {
+      tx = mouse.x;
+      ty = mouse.y;
+    } else {
+      // Lazy wander
+      const wt = ts * 0.00075 * e.idleSpeed;
+      tx = e.nx * W + Math.cos(wt + e.idleT * 0.4) * e.r * 0.35;
+      ty = e.ny * H + Math.sin(wt * 1.3 + e.idleT * 0.3) * e.r * 0.28;
+    }
+
+    // Smooth pupil follow
+    const lag = (idle || noMouse) ? 0.03 : 0.13;
+    e.px = lerp(e.px, tx, lag);
+    e.py = lerp(e.py, ty, lag);
+
+    // ── Squash/stretch ──
+    const ld = Math.hypot(e.px - e.x, e.py - e.y);
+    const strain = clamp(ld / (e.r * 0.45), 0, 1);
+    e.sqX = lerp(e.sqX, 1 + strain * 0.07, 0.09);
+    e.sqY = lerp(e.sqY, 1 - strain * 0.05, 0.09);
+
+    // ── Wobble physics (spring after blink opens) ──
+    e.wobbleV += (-e.wobble * 18 - e.wobbleV * 4.5) * (dt * 0.001);
+    e.wobble  += e.wobbleV * (dt * 0.001);
+
+    // ── Blink ──
+    e.blinkTimer -= dt;
+    if (!e.blinking && e.blinkTimer <= 0) {
+      e.blinking = true;
+      e.blinkPhase = 0;
+      e.blinkTimer = rand(2500, 7000);
+    }
+    if (e.blinking) {
+      const closeSpd = 0.014, openSpd = 0.009;
+      if (e.blinkPhase === 0) {
+        e.blinkT += dt * closeSpd;
+        if (e.blinkT >= 1) { e.blinkT = 1; e.blinkPhase = 1; }
+      } else {
+        e.blinkT -= dt * openSpd;
+        if (e.blinkT <= 0) {
+          e.blinkT = 0;
+          e.blinking = false;
+          e.wobble = 0.5; // spring on open
+          e.wobbleV = -1.0;
+        }
+      }
+    }
+
+    drawEye(e);
+  });
+}
+
+// ─── Init ────────────────────────────────────────────────────────────────────
+buildEyes();
+resize();
+requestAnimationFrame(ts => { prevT = ts; loop(ts); });
+
+// Auto-hide hint
+setTimeout(() => { hint.classList.add('gone'); hintGone = true; }, 6000);
+</script>
+</body>
+</html>
